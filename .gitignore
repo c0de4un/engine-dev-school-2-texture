@@ -1,0 +1,9 @@
+# IDE Cache
+.vs/
+.vscode/
+libs/
+
+# Artefacts
+bin/
+out/
+build/
