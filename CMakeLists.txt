@@ -84,6 +84,9 @@ else ()
   message(FATAL_ERROR "${PROJECT_NAME} - OpenGL not found. Configure SDK and check packages")
 endif ()
 
+# - - - STB-IMAGE - - - -
+set(STB_IMAGE_INCLUDE "${CMAKE_CURRENT_LIST_DIR}/libs/STB/include")
+
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # BUILD
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -109,5 +112,8 @@ target_link_libraries(app
 
 # Include GLAD Headers
 target_include_directories(app PRIVATE ${GLAD_INCLUDE})
+
+# Include STB-IMAGE
+target_include_directories(app PRIVATE ${STB_IMAGE_INCLUDE})
 
 # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =

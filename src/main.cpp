@@ -22,6 +22,10 @@
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
+// STB Image
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // DEFINES
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -34,7 +38,7 @@ constexpr const int RESULT_OK = 0;
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
-const int OPEN_GL_VERSION_MAJOR = 3;
+const int OPEN_GL_VERSION_MAJOR = 4;
 const int OPEN_GL_VERSION_MINOR = 0;
 GLFWwindow *mWindow;
 int mFrameBufferWidth = 0;
@@ -56,6 +60,11 @@ GLuint mVertexArrayObject;
 GLuint mVertexShaderID;
 GLuint mFragmentShaderID;
 GLuint mShaderProgramID;
+
+GLuint mTextureID;
+int mTextureWidth;
+int mTextureHeight;
+int mNumberOfTextureChannels;
 
 static void handleGLFWErrors(int error, const char* description)
 {
@@ -85,6 +94,64 @@ void handleFramebufferSizeChange(GLFWwindow *pWindow, int width, int height)
   mFrameBufferWidth = width;
   mFrameBufferHeight = height;
   glViewport(0, 0, mFrameBufferWidth, mFrameBufferHeight);
+}
+
+bool loadTexture()
+{
+  // @TODO: loadTexture()
+  unsigned char *textureData;
+  try
+  {
+    textureData = stbi_load(
+      "../assets/neko_tyan.png",
+      &mTextureWidth,
+      &mTextureHeight,
+      &mNumberOfTextureChannels,
+      0
+    );
+  }
+  catch(const std::exception& stlExc)
+  {
+    std::cerr << "loadTexture: " << stlExc.what() << '\n';
+
+    return false;
+  }
+
+  if (!textureData)
+  {
+    std::cout << "\n";
+    return false;
+  }
+
+  glGenTextures(1, &mTextureID);
+  if (!mTextureID)
+  {
+    std::cout << "loadTexture: failed to generate texture id\n";
+    stbi_image_free(textureData);
+    return false;
+  }
+
+  glBindTexture(GL_TEXTURE_2D, mTextureID);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexImage2D(
+    GL_TEXTURE_2D,
+    0,
+    GL_RGBA,
+    mTextureWidth,
+    mTextureHeight,
+    0,
+    GL_RGBA,
+    GL_UNSIGNED_BYTE,
+    textureData
+  );
+  glGenerateMipmap(GL_TEXTURE_2D);
+
+  stbi_image_free(textureData);
+
+  return true;
 }
 
 GLuint loadShader(const GLenum _type, const char *const _src)
@@ -207,6 +274,12 @@ bool onSurfaceReady()
   if (!loadShaders())
   {
     std::cout << "onSurfaceReady: failed to laod shaders\n";
+    return false;
+  }
+
+  if (!loadTexture())
+  {
+    std::cout << "onSurfaceReady: failed to load texture\n";
     return false;
   }
 
