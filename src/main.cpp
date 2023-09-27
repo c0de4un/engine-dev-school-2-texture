@@ -38,24 +38,34 @@ constexpr const int RESULT_OK = 0;
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
-const int OPEN_GL_VERSION_MAJOR = 4;
-const int OPEN_GL_VERSION_MINOR = 0;
+const int OPEN_GL_VERSION_MAJOR = 3;
+const int OPEN_GL_VERSION_MINOR = 2;
 GLFWwindow *mWindow;
 int mFrameBufferWidth = 0;
 int mFrameBufferHeight = 0;
 
 const float mVertices[] = {
-  0.0f, 0.5f, 0.0f,
-  0.5f, -0.5f, 0.0f,
-  -0.5f, -0.5f, 0.0f
+   0.5f,  0.5f, 0.0f,  // Top Right
+   0.5f, -0.5f, 0.0f,  // Bottom Right
+  -0.5f, -0.5f, 0.0f,  // Bottom Left
+  -0.5f,  0.5f, 0.0f   // Top Left
 };
-static constexpr const int NUMBER_OF_VERTICES_PER_TRIANGLE = 3;
-static constexpr const int NUMBER_OF_ATTRIBUTES_PER_VERTEX = 3;
-static constexpr const int GL_TRIANGLE_BUFFER_SIZE = (NUMBER_OF_VERTICES_PER_TRIANGLE * NUMBER_OF_ATTRIBUTES_PER_VERTEX) * sizeof(float);
+const unsigned int mIndices[] = {
+  0, 1, 3,   // First Triangle
+  1, 2, 3    // Second Triangle
+};
+
+constexpr const int NUMBER_OF_VERTICES = 4;
+constexpr const int VERTEX_SIZE        = 3;
+constexpr const int VERTEX_LENGTH      = sizeof(float) * VERTEX_SIZE;
+constexpr const int MESH_LENGTH        = NUMBER_OF_VERTICES * VERTEX_LENGTH;
+constexpr const int NUMBER_OF_INDICES  = 6;
+constexpr const int INDICES_LENGTH     = NUMBER_OF_INDICES * sizeof(unsigned int);
 static constexpr const int CHAR_SIZE = sizeof(char);
 
 GLuint mVertexBufferObject;
 GLuint mVertexArrayObject;
+GLuint mElementsBufferObject;
 
 GLuint mVertexShaderID;
 GLuint mFragmentShaderID;
@@ -98,12 +108,11 @@ void handleFramebufferSizeChange(GLFWwindow *pWindow, int width, int height)
 
 bool loadTexture()
 {
-  // @TODO: loadTexture()
   unsigned char *textureData;
   try
   {
     textureData = stbi_load(
-      "../assets/neko_tyan.png",
+      "assets/textures/neko_tyan.png",
       &mTextureWidth,
       &mTextureHeight,
       &mNumberOfTextureChannels,
@@ -147,7 +156,6 @@ bool loadTexture()
     GL_UNSIGNED_BYTE,
     textureData
   );
-  glGenerateMipmap(GL_TEXTURE_2D);
 
   stbi_image_free(textureData);
 
@@ -158,7 +166,7 @@ GLuint loadShader(const GLenum _type, const char *const _src)
 {
   GLint compilationStatus;
 
-  GLuint shaderId = glCreateShader(GL_VERTEX_SHADER);
+  GLuint shaderId = glCreateShader(_type);
   if (!shaderId)
   {
     std::cout << "loadShaders: failed to generate Vertex Shader ID\n";
@@ -184,9 +192,10 @@ GLuint loadShader(const GLenum _type, const char *const _src)
       std::cout << "loadShader: " << infoLog << "\n";
 
       free(infoLog);
-    }
 
-    glDeleteShader(shaderId);
+      glDeleteShader(shaderId);
+      shaderId = 0;
+    }
   }
 
   return shaderId;
@@ -196,12 +205,12 @@ bool loadShaders()
 {
   std::cout << "loadShaders: loading vertex shader\n";
   const char *const vertexShaderCode =
-  "#version 150                    \n"
-  "in vec3 vp;                     \n"
-  "void main()                     \n"
-  "{                               \n"
-  "    gl_Position = vec4(vp, 1.0);\n"
-  "}                               \n";
+    "#version 330 core                                   \n"
+    "layout (location = 0) in vec3 aPos;                 \n"
+    "void main()                                         \n"
+    "{                                                   \n"
+    "    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+    "}                                                   \n";
 
   mVertexShaderID = loadShader(GL_VERTEX_SHADER, vertexShaderCode);
   if (!mVertexShaderID)
@@ -213,12 +222,11 @@ bool loadShaders()
 
   std::cout << "loadShaders: loading fragment shader\n";
   const char *const fragmentShaderCode =
-  "#version 150                               \n"
-  "out vec4 frag_colour;                      \n"
-  "void main()                                \n"
-  "{                                          \n"
-  "    frag_colour = vec4(0.5, 0.0, 0.5, 1.0);\n"
-  "}                                          \n";
+  "#version 150                                  \n"
+  "out vec4 color;                               \n"
+  "void main(){                                  \n"
+  "    color = vec4(1.0, 0.0, 0.0, 1.0);         \n"
+  "}                                             \n";
   mFragmentShaderID = loadShader(GL_FRAGMENT_SHADER, fragmentShaderCode);
   if (!mFragmentShaderID)
   {
@@ -237,6 +245,79 @@ bool loadShaders()
   glAttachShader(mShaderProgramID, mFragmentShaderID);
   glLinkProgram(mShaderProgramID);
 
+  GLint linkResult;
+  GLint linkLogLength;
+  glGetProgramiv(mShaderProgramID, GL_LINK_STATUS, &linkResult);
+  glGetProgramiv(mShaderProgramID, GL_INFO_LOG_LENGTH, &linkLogLength);
+  if (linkLogLength > 0)
+  {
+    char *const linkMsg = static_cast<char*>(malloc(linkLogLength));
+
+    glGetProgramInfoLog(
+      mShaderProgramID,
+      linkLogLength,
+      nullptr,
+      linkMsg
+    );
+    std::cout << "loadShaders: failed to link program with message: " << linkMsg << "\n";
+
+    free(linkMsg);
+
+    return false;
+  }
+
+  glDetachShader(mShaderProgramID, mVertexShaderID);
+	glDetachShader(mShaderProgramID, mFragmentShaderID);
+
+  glDeleteShader(mVertexShaderID);
+  mVertexShaderID = 0;
+  glDeleteShader(mFragmentShaderID);
+  mFragmentShaderID = 0;
+
+  return true;
+}
+
+bool loadMesh()
+{
+  // Create Mesh Array Object & Bind Buffers to it
+  glGenVertexArrays(1, &mVertexArrayObject);
+  glBindVertexArray(mVertexArrayObject);
+
+  // Load Vertices Data to GPU
+  glGenBuffers(1, &mVertexBufferObject);
+  glBindBuffer(GL_ARRAY_BUFFER, mVertexBufferObject);
+  glBufferData(
+    GL_ARRAY_BUFFER,
+    MESH_LENGTH,
+    mVertices,
+    GL_STATIC_DRAW
+  );
+
+  glEnableVertexAttribArray(0); // Pos
+  glBindBuffer(GL_ARRAY_BUFFER, mVertexBufferObject);
+  glVertexAttribPointer(
+    0,
+    VERTEX_SIZE,
+    GL_FLOAT,
+    GL_FALSE,
+    VERTEX_LENGTH,
+    0
+  );
+
+  // Indices Buffer
+  glGenBuffers(1, &mElementsBufferObject);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mElementsBufferObject);
+  glBufferData(
+    GL_ELEMENT_ARRAY_BUFFER,
+    INDICES_LENGTH,
+    mIndices,
+    GL_STATIC_DRAW
+  );
+
+  glBindVertexArray(0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
   return true;
 }
 
@@ -245,43 +326,30 @@ bool onSurfaceReady()
   glfwGetFramebufferSize(mWindow, &mFrameBufferWidth, &mFrameBufferHeight);
   glViewport(0, 0, mFrameBufferWidth, mFrameBufferHeight);
 
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClearColor(0.1f, 0.5f, 0.5f, 1.0f);
 
-  // Load Vertices Data to GPU
-  glGenBuffers(1, &mVertexBufferObject);
-  glBindBuffer(GL_ARRAY_BUFFER, mVertexBufferObject);
-  glBufferData(
-    GL_ARRAY_BUFFER,
-    GL_TRIANGLE_BUFFER_SIZE,
-    mVertices,
-    GL_STATIC_DRAW
-  );
+  std::cout << "onSurfaceReady: loading mesh\n";
+  if (!loadMesh())
+  {
+    return false;
+  }
+  std::cout << "onSurfaceReady: mesh loaded\n";
 
-  // Create Mesh Array Object & Bind Buffers to it
-  glGenVertexArrays(1, &mVertexArrayObject);
-  glBindVertexArray(mVertexArrayObject);
-  glEnableVertexAttribArray(0);
-  glBindBuffer(GL_ARRAY_BUFFER, mVertexBufferObject);
-  glVertexAttribPointer(
-    0,
-    NUMBER_OF_VERTICES_PER_TRIANGLE,
-    GL_FLOAT,
-    GL_FALSE,
-    0,
-    nullptr
-  );
-
+  std::cout << "onSurfaceReady: loading shaders\n";
   if (!loadShaders())
   {
     std::cout << "onSurfaceReady: failed to laod shaders\n";
     return false;
   }
+  std::cout << "onSurfaceReady: shaders loaded\n";
 
+  std::cout << "onSurfaceReady: loading texture\n";
   if (!loadTexture())
   {
     std::cout << "onSurfaceReady: failed to load texture\n";
     return false;
   }
+  std::cout << "onSurfaceReady: texture loaded\n";
 
   return true;
 }
@@ -322,14 +390,23 @@ bool init()
 
 void render()
 {
-  glClear(GL_COLOR_BUFFER_BIT);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   glUseProgram(mShaderProgramID);
-
   glBindVertexArray(mVertexArrayObject);
+  glEnableVertexAttribArray(0);
 
   // Draw Mesh
-  glDrawArrays(GL_TRIANGLES, 0, NUMBER_OF_VERTICES_PER_TRIANGLE);
+  glDrawElements(
+    GL_TRIANGLES,
+    NUMBER_OF_INDICES,
+    GL_UNSIGNED_INT,
+    (void*)0
+  );
+
+  glDisableVertexAttribArray(0);
+  glBindVertexArray(0);
+  glUseProgram(0);
 }
 
 void mainLoop()
@@ -364,6 +441,30 @@ void terminate()
       glDeleteProgram(mShaderProgramID);
     }
     mShaderProgramID = 0;
+
+    if (mVertexBufferObject)
+    {
+      glDeleteBuffers(1, &mVertexBufferObject);
+    }
+    mVertexBufferObject = 0;
+
+    if (mElementsBufferObject)
+    {
+      glDeleteBuffers(1, &mElementsBufferObject);
+    }
+    mElementsBufferObject = 0;
+
+    if (mVertexArrayObject)
+    {
+      glDeleteVertexArrays(1, &mVertexArrayObject);
+    }
+    mVertexArrayObject = 0;
+
+    if (mTextureID)
+    {
+      glDeleteTextures(1, &mTextureID);
+    }
+    mTextureID = 0;
 
     glfwDestroyWindow(mWindow);
   }
