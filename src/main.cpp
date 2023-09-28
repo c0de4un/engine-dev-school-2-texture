@@ -45,10 +45,10 @@ int mFrameBufferWidth = 0;
 int mFrameBufferHeight = 0;
 
 const float mVertices[] = {
-   0.5f,  0.5f, 0.0f,  // Top Right
-   0.5f, -0.5f, 0.0f,  // Bottom Right
-  -0.5f, -0.5f, 0.0f,  // Bottom Left
-  -0.5f,  0.5f, 0.0f   // Top Left
+   0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,  // Top Right
+   0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, // Bottom Right
+  -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, // Bottom Left
+  -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f// Top Left
 };
 const unsigned int mIndices[] = {
   0, 1, 3,   // First Triangle
@@ -56,12 +56,21 @@ const unsigned int mIndices[] = {
 };
 
 constexpr const int NUMBER_OF_VERTICES = 4;
-constexpr const int VERTEX_SIZE        = 3;
+constexpr const int VERTEX_SIZE        = 7;
 constexpr const int VERTEX_LENGTH      = sizeof(float) * VERTEX_SIZE;
 constexpr const int MESH_LENGTH        = NUMBER_OF_VERTICES * VERTEX_LENGTH;
 constexpr const int NUMBER_OF_INDICES  = 6;
 constexpr const int INDICES_LENGTH     = NUMBER_OF_INDICES * sizeof(unsigned int);
 static constexpr const int CHAR_SIZE = sizeof(char);
+
+// Layout
+constexpr const int VERTEX_POS_INDEX    = 0;
+constexpr const int VERTEX_POS_SIZE     = 3;
+constexpr const int VERTEX_POS_LENGTH   = VERTEX_POS_SIZE * sizeof(float);
+constexpr const int VERTEX_COLOR_INDEX  = 1;
+constexpr const int VERTEX_COLOR_SIZE   = 4;
+constexpr const int VERTEX_COLOR_OFFSET = VERTEX_POS_LENGTH;
+constexpr const int VERTEX_STRIDE       = VERTEX_LENGTH;
 
 GLuint mVertexBufferObject;
 GLuint mVertexArrayObject;
@@ -207,9 +216,12 @@ bool loadShaders()
   const char *const vertexShaderCode =
     "#version 330 core                                   \n"
     "layout (location = 0) in vec3 aPos;                 \n"
+    "layout (location = 1) in vec4 aColor;               \n"
+    "out vec4 color;                                     \n"
     "void main()                                         \n"
     "{                                                   \n"
     "    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+    "    color = aColor;                                 \n"
     "}                                                   \n";
 
   mVertexShaderID = loadShader(GL_VERTEX_SHADER, vertexShaderCode);
@@ -222,10 +234,11 @@ bool loadShaders()
 
   std::cout << "loadShaders: loading fragment shader\n";
   const char *const fragmentShaderCode =
-  "#version 150                                  \n"
-  "out vec4 color;                               \n"
+  "#version 330 core                             \n"
+  "in vec4 color;                                \n"
+  "out vec4 outColor;                            \n"
   "void main(){                                  \n"
-  "    color = vec4(1.0, 0.0, 0.0, 1.0);         \n"
+  "    outColor = color;                         \n"
   "}                                             \n";
   mFragmentShaderID = loadShader(GL_FRAGMENT_SHADER, fragmentShaderCode);
   if (!mFragmentShaderID)
@@ -293,16 +306,25 @@ bool loadMesh()
     GL_STATIC_DRAW
   );
 
-  glEnableVertexAttribArray(0); // Pos
-  glBindBuffer(GL_ARRAY_BUFFER, mVertexBufferObject);
+  // Vertices Data Layout
   glVertexAttribPointer(
-    0,
-    VERTEX_SIZE,
-    GL_FLOAT,
-    GL_FALSE,
-    VERTEX_LENGTH,
-    0
+      VERTEX_POS_INDEX,
+      VERTEX_POS_SIZE,
+      GL_FLOAT,
+      GL_FALSE,
+      VERTEX_STRIDE,
+      0
   );
+  glEnableVertexAttribArray(VERTEX_POS_INDEX);
+  glVertexAttribPointer(
+      VERTEX_COLOR_INDEX,
+      VERTEX_COLOR_SIZE,
+      GL_FLOAT,
+      GL_FALSE,
+      VERTEX_STRIDE,
+      (GLvoid*)VERTEX_COLOR_OFFSET
+  );
+  glEnableVertexAttribArray(VERTEX_COLOR_INDEX);
 
   // Indices Buffer
   glGenBuffers(1, &mElementsBufferObject);
@@ -328,13 +350,6 @@ bool onSurfaceReady()
 
   glClearColor(0.1f, 0.5f, 0.5f, 1.0f);
 
-  std::cout << "onSurfaceReady: loading mesh\n";
-  if (!loadMesh())
-  {
-    return false;
-  }
-  std::cout << "onSurfaceReady: mesh loaded\n";
-
   std::cout << "onSurfaceReady: loading shaders\n";
   if (!loadShaders())
   {
@@ -350,6 +365,13 @@ bool onSurfaceReady()
     return false;
   }
   std::cout << "onSurfaceReady: texture loaded\n";
+
+  std::cout << "onSurfaceReady: loading mesh\n";
+  if (!loadMesh())
+  {
+    return false;
+  }
+  std::cout << "onSurfaceReady: mesh loaded\n";
 
   return true;
 }
