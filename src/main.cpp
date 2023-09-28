@@ -44,11 +44,12 @@ GLFWwindow *mWindow;
 int mFrameBufferWidth = 0;
 int mFrameBufferHeight = 0;
 
+// X Y Z | R G B A | S T (U, V)
 const float mVertices[] = {
-   0.5f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,  // Top Right
-   0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, // Bottom Right
-  -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, // Bottom Left
-  -0.5f,  0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f// Top Left
+   0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Top Right
+   0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,  // Bottom Right
+  -0.5f, -0.5f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,  // Bottom Left
+  -0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f   // Top Left
 };
 const unsigned int mIndices[] = {
   0, 1, 3,   // First Triangle
@@ -56,7 +57,7 @@ const unsigned int mIndices[] = {
 };
 
 constexpr const int NUMBER_OF_VERTICES = 4;
-constexpr const int VERTEX_SIZE        = 7;
+constexpr const int VERTEX_SIZE        = 9;
 constexpr const int VERTEX_LENGTH      = sizeof(float) * VERTEX_SIZE;
 constexpr const int MESH_LENGTH        = NUMBER_OF_VERTICES * VERTEX_LENGTH;
 constexpr const int NUMBER_OF_INDICES  = 6;
@@ -64,13 +65,19 @@ constexpr const int INDICES_LENGTH     = NUMBER_OF_INDICES * sizeof(unsigned int
 static constexpr const int CHAR_SIZE = sizeof(char);
 
 // Layout
+constexpr const int VERTEX_STRIDE       = VERTEX_LENGTH;
 constexpr const int VERTEX_POS_INDEX    = 0;
 constexpr const int VERTEX_POS_SIZE     = 3;
 constexpr const int VERTEX_POS_LENGTH   = VERTEX_POS_SIZE * sizeof(float);
+
 constexpr const int VERTEX_COLOR_INDEX  = 1;
 constexpr const int VERTEX_COLOR_SIZE   = 4;
 constexpr const int VERTEX_COLOR_OFFSET = VERTEX_POS_LENGTH;
-constexpr const int VERTEX_STRIDE       = VERTEX_LENGTH;
+constexpr const int VERTEX_COLOR_LENGTH = VERTEX_COLOR_SIZE * sizeof(float);
+
+constexpr const int VERTEX_TEX_INDEX    = 2;
+constexpr const int VERTEX_TEX_SIZE     = 2;
+constexpr const int VERTEX_TEX_OFFSET   = VERTEX_COLOR_OFFSET + VERTEX_COLOR_LENGTH;
 
 GLuint mVertexBufferObject;
 GLuint mVertexArrayObject;
@@ -117,6 +124,8 @@ void handleFramebufferSizeChange(GLFWwindow *pWindow, int width, int height)
 
 bool loadTexture()
 {
+  stbi_set_flip_vertically_on_load(true); // tell stb_image.h to flip loaded texture's on the y-axis.
+
   unsigned char *textureData;
   try
   {
@@ -165,6 +174,7 @@ bool loadTexture()
     GL_UNSIGNED_BYTE,
     textureData
   );
+  glGenerateMipmap(GL_TEXTURE_2D);
 
   stbi_image_free(textureData);
 
@@ -217,11 +227,14 @@ bool loadShaders()
     "#version 330 core                                   \n"
     "layout (location = 0) in vec3 aPos;                 \n"
     "layout (location = 1) in vec4 aColor;               \n"
+    "layout (location = 2) in vec2 aTexCoords;           \n"
     "out vec4 color;                                     \n"
+    "out vec2 texCoords;                                 \n"
     "void main()                                         \n"
     "{                                                   \n"
     "    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
     "    color = aColor;                                 \n"
+    "    texCoords = aTexCoords;                         \n"
     "}                                                   \n";
 
   mVertexShaderID = loadShader(GL_VERTEX_SHADER, vertexShaderCode);
@@ -234,12 +247,14 @@ bool loadShaders()
 
   std::cout << "loadShaders: loading fragment shader\n";
   const char *const fragmentShaderCode =
-  "#version 330 core                             \n"
-  "in vec4 color;                                \n"
-  "out vec4 outColor;                            \n"
-  "void main(){                                  \n"
-  "    outColor = color;                         \n"
-  "}                                             \n";
+  "#version 330 core                                      \n"
+  "in vec4 color;                                         \n"
+  "in vec2 texCoords;                                     \n"
+  "out vec4 outColor;                                     \n"
+  "uniform sampler2D ourTexture;                          \n"
+  "void main(){                                           \n"
+  "    outColor = texture(ourTexture, texCoords) * color; \n"
+  "}                                                      \n";
   mFragmentShaderID = loadShader(GL_FRAGMENT_SHADER, fragmentShaderCode);
   if (!mFragmentShaderID)
   {
@@ -322,9 +337,18 @@ bool loadMesh()
       GL_FLOAT,
       GL_FALSE,
       VERTEX_STRIDE,
-      (GLvoid*)VERTEX_COLOR_OFFSET
+      (GLvoid*)(VERTEX_COLOR_OFFSET)
   );
   glEnableVertexAttribArray(VERTEX_COLOR_INDEX);
+  glVertexAttribPointer(
+      VERTEX_TEX_INDEX,
+      VERTEX_TEX_SIZE,
+      GL_FLOAT,
+      GL_FALSE,
+      VERTEX_STRIDE,
+      (GLvoid*)(VERTEX_TEX_OFFSET)
+  );
+  glEnableVertexAttribArray(VERTEX_TEX_INDEX);
 
   // Indices Buffer
   glGenBuffers(1, &mElementsBufferObject);
@@ -388,7 +412,7 @@ bool init()
 
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, OPEN_GL_VERSION_MAJOR);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, OPEN_GL_VERSION_MINOR);
-  mWindow = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "OpenGL Triangle", nullptr, nullptr);
+  mWindow = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "OpenGL Sprite", nullptr, nullptr);
   if (!mWindow)
   {
     std::cout << "init: failed to create window\n";
@@ -415,8 +439,22 @@ void render()
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   glUseProgram(mShaderProgramID);
+
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, mTextureID);
+
+  GLint texture0Loc = glGetUniformLocation(mShaderProgramID, "ourTexture");
+  if (texture0Loc == -1) {
+      std::cout << "failed to retriev texture #0 sampler2d\n";
+      glfwSetWindowShouldClose(mWindow, true);
+      return;
+  }
+  glUniform1i(texture0Loc, 0);
+
   glBindVertexArray(mVertexArrayObject);
-  glEnableVertexAttribArray(0);
 
   // Draw Mesh
   glDrawElements(
@@ -426,8 +464,9 @@ void render()
     (void*)0
   );
 
-  glDisableVertexAttribArray(0);
   glBindVertexArray(0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glDisable(GL_BLEND);
   glUseProgram(0);
 }
 
